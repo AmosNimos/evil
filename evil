@@ -1,0 +1,297 @@
+can you fix this code? and make it more clear?:
+#!/bin/bash
+################################################################################
+# Name:        evil
+# Date:        2024-05-04
+# Author:      Amosnimos
+# Description: A simple CLI menu selection utility with customizable colors and borders.
+################################################################################
+
+# ▛▀▘▌ ▌▜▘▌
+# ▙▄ ▚▗▘▐ ▌
+# ▌  ▝▞ ▐ ▌  
+# ▀▀▘ ▘ ▀▘▀▀▘
+
+. flag
+
+# Function to read from file if not interactive
+#read_file() {
+#    local line
+#    while IFS= read -r line; do
+#        text_array+=("$line")
+#    done
+#}
+
+# Save the current PS1 prompt
+old_ps1=$PS1
+
+# Hide the PS1 prompt
+PS1=''
+
+# Hide the cursor
+tput civis
+
+# Function to restore the PS1 prompt and show the cursor
+restore_prompt() {
+    PS1=$old_ps1
+    tput cnorm
+}
+
+# Trap the EXIT signal to restore the prompt and show the cursor when the script exits
+trap restore_prompt EXIT
+
+# Function to handle key presses
+keypress() {
+    read -rsn1 key
+    element=${#page[@]}
+    if [[ $element -gt 20 ]]; then
+        element=20
+    fi
+    border_height=$element
+    # basic inputs
+    case "$key" in
+        " ") exit_requested=true;;  # Exit if space is pressed
+        "q") exit_requested=true ; clear ;;  # Exit if "q" is pressed
+        *) :;;  # Ignore other keys
+    esac
+    # basic inputs
+    if [[ $is_menu == "true" ]]; then
+        case "$key" in
+            "") selected_enter=true;;
+            $'\x1b') # Escape sequence, possibly an arrow key
+                read -rsn2 key # Read two more bytes
+                case "$key" in
+                    '[A') ((selection--));; # Up arrow
+                    '[B') ((selection++));; # Down arrow
+                    *) :;;  # Ignore other escape sequences
+                esac
+            ;;
+            "w") ((selection--));; # Move selection up
+            "s") ((selection++));; # Move selection down
+            "a") ((page_index--)); init_page;; # Move selection up
+            "d") ((page_index++)); init_page;; # Move selection down
+            *) :;;  # Ignore other keys
+        esac
+
+        # warp page
+        if [[ -n $page_index ]];then
+            if [ $page_index -lt 0 ]; then
+                page_index=$pages
+            elif [ $page_index -gt $pages ]; then
+                page_index=0
+            fi
+        else
+            page_index=0
+        fi
+
+        # warp cursor
+        if [ -n "$selection" ]; then
+            if [ $selection -lt 0 ]; then
+                ((selection=${#page[@]} - 1))
+            fi
+
+            if [[ $selection -ge $element ]]; then
+                selection=0
+            fi
+        fi
+    fi
+}
+
+if [[ $flag_d ]]; then
+    is_menu="false"
+else
+    is_menu="true"
+fi
+
+chars="░▒"
+cols=$(tput cols)
+rows=$(tput lines)
+#text=$'option1\noption2\noption3\noption4'
+#text_length=${#text}
+#readarray -t text_array <<<"$text"
+
+# Check if input is from a file
+if [[ -n $flag_f ]]; then
+    # Assuming $flag_f is the path to the file
+    if [[ -f "$flag_f" ]]; then
+        while IFS= read -r line; do
+            if [[ -n "$line" ]]; then
+                text_array+=("$line")
+            fi
+        done < "$flag_f"
+    fi
+elif [[ $# -ge 1 ]]; then
+    #text_array+=("$@")
+    for arg in "$@"; do
+        if [[ ! "$arg" == -* ]]; then
+            text_array+=("$arg")
+        fi
+    done
+fi
+
+array_size=${#text_array[@]}
+pages=$(( (${#text_array[i]} + 19) / 20 ))
+page_index=1
+border_sym="▓"
+margin_sym=" "
+
+new_page(){
+    # Clear the terminal screen
+    clear
+
+    # Initialize variable to store the length of the longest string
+    longest_length=0
+    border=""
+    margin=""
+
+    if [[ $is_menu == "true" ]]; then
+        selection=""
+    fi
+
+    # Iterate over the array
+    for element in "${page[@]}"; do
+        # Get the length of the current element
+        length=${#element}
+        # Update longest_length if the current element is longer
+        if (( length > longest_length )); then
+            longest_length=$length
+        fi
+    done
+
+    text_length=longest_length
+
+    # Add spaces to each element to match the longest length
+    for i in "${!page[@]}"; do
+        current_length=${#page[i]}
+        spaces_to_add=$((longest_length - current_length))
+        page[i]+=$(printf "%-${spaces_to_add}s" "")
+    done
+
+    margin+="$border_sym"
+    for ((i = 0; i < $((text_length+2)); i++)); do
+        margin+="$margin_sym"
+    done
+    margin+="$border_sym"
+
+    for ((i = 0; i < $((text_length+4)); i++)); do
+        border+="$border_sym"
+    done
+
+    text_row=$((rows / 2))
+    text_col=$(( (cols - text_length) / 2 ))
+
+    # Main loop
+    exit_requested=false
+
+    # Calculate the size of the text_array divided by two
+    size_of_text=$(( ${#page[@]} / 2 ))
+
+    # Clear the terminal screen
+    clear
+}
+
+# put the content of the current page index from the text_array into the page array, then you can use that page array for other calculation
+init_page() {
+    page=()
+    selection=0
+    write_page=0
+    for (( i = $((page_index*20)); i < $((page_index*20)) + 20 && i < ${#text_array[@]}; i++ )); do
+        page[write_page]=${text_array[i]}
+        ((write_page++))
+    done    
+    new_page
+}
+init_page
+
+## Print the split sections
+#for section in "${split_text_array[@]}"; do
+#    echo "Section:"
+#    for element in "${section[@]}"; do
+#        echo "$element"
+#    done
+#done
+
+main_color="3"
+border_fg_color="$main_color"
+border_bg_color="0"
+border_color="\e[3${border_fg_color};4${border_bg_color}m"
+active_fg_color="$main_color"
+active_bg_color="0"
+active_color="\e[3${active_fg_color};4${active_bg_color}m"
+inactive_fg_color="7"
+inactive_bg_color="0"
+inactive_color="\e[3${inactive_fg_color};4${inactive_bg_color}m"
+reset_color="\e[0m"
+selection=0
+
+# calculate the largest line in the text string
+
+while ! $exit_requested; do
+
+    # Print a grid of characters
+#    for ((i=0; i<$rows; i++)); do
+#        for ((j=0; j<$cols; j++)); do
+#            char=${chars:$((RANDOM % ${#chars})):1}
+#            printf "$char"
+#        done
+#        #echo
+#    done
+
+    # Print the text at the center of the screen
+    printf "$border_color" # Border color
+    tput cup $((text_row-2-$size_of_text)) $((text_col-2))
+    printf "$border"
+    tput cup $((text_row-1-$size_of_text)) $((text_col-2))
+    printf "$margin"
+    printf $reset_color
+    # for line in text
+    current_row=0
+    # If current_row+chapter<range print line
+    if [[ $array_size -lt 20 ]]; then
+        for i in "${!page[@]}"; do
+            if [[ $is_menu != "false" && $i -eq $selection ]]; then
+                element="$border_color$border_sym$margin_sym$active_color${page[i]}$border_color$margin_sym$border_sym$reset_color"
+            else
+                element="$border_color$border_sym$margin_sym$inactive_color${page[i]}$border_color$margin_sym$border_sym$reset_color"
+            fi
+            tput cup $(($text_row+$current_row-$size_of_text)) $((text_col-2))
+            printf "$element"
+            ((current_row++))
+        done
+    else
+        tput cup $((text_row-3-$size_of_text)) $((text_col-2))
+        printf "[$page_index/$pages]"
+        
+        # Print chapters (pages) from chapter_index to chapter_index + 20
+        for i in "${!page[@]}"; do
+            if [[ $is_menu != "false" && $i -eq $selection ]]; then
+                element="$border_color$border_sym$margin_sym$active_color${page[i]}$border_color$margin_sym$border_sym$reset_color"
+            else
+                element="$border_color$border_sym$margin_sym$inactive_color${page[i]}$border_color$margin_sym$border_sym$reset_color"
+            fi
+            tput cup $(($text_row+$current_row-$size_of_text)) $((text_col-2))
+            printf "$element"
+            ((current_row++))
+        done
+    fi
+    
+    if [[ -n "$selected_enter" ]]; then
+        if [[ -z $flag_i ]]; then
+            clear
+            echo "${page[selection]}"
+        else
+            clear
+            echo "$selection"
+        fi
+        break
+    fi
+
+    printf "$border_color" # Border color
+    tput cup $((text_row+1+border_height-1-$size_of_text)) $((text_col-2))
+    printf "$margin"
+    tput cup $((text_row+2+border_height-1-$size_of_text)) $((text_col-2))
+    printf "$border"
+    printf $reset_color
+    # Wait for key press
+    keypress
+done
